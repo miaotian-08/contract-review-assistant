@@ -13,11 +13,9 @@ export default function FileUpload({
 }: FileUploadProps) {
   const [debug, setDebug] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
-  const [isProcessing, setIsProcessing] = useState(false);
 
   const extractText = useCallback(
     async (file: File) => {
-      setIsProcessing(true);
       setErrorMsg("");
       setDebug("extractText 开始执行");
       onStatusChange("正在识别文件...");
@@ -61,7 +59,6 @@ export default function FileUpload({
         const msg = err instanceof Error ? err.message : "解析失败";
         setErrorMsg(msg);
         setDebug("出错：" + msg);
-        setIsProcessing(false);
       }
     },
     [onTextExtracted, onStatusChange]
