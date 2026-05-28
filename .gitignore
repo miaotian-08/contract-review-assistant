@@ -1,0 +1,19 @@
+# dependencies
+node_modules/
+
+# next.js
+.next/
+
+# misc
+.DS_Store
+.env.local
+.env*.local
+
+# debug
+npm-debug.log*
+
+# vercel
+.vercel
+
+# claude
+.claude/
