@@ -158,6 +158,7 @@ exports.handler = async (event) => {
       },
       body: JSON.stringify({
         model: "mimo-v2.5",
+        stream: true,
         messages: [
           { role: "system", content: REVIEW_SYSTEM_PROMPT },
           { role: "user", content: buildReviewPrompt(text) },
@@ -172,23 +173,83 @@ exports.handler = async (event) => {
       return { statusCode: 502, headers, body: JSON.stringify({ error: "AI审查服务暂时不可用" }) };
     }
 
-    const data = await response.json();
-    const content = data.choices[0]?.message?.content;
+    // 流式转发：边收 MiMo 输出边推给前端
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let fullContent = "";
 
-    if (!content) {
-      return { statusCode: 502, headers, body: JSON.stringify({ error: "AI未返回结果" }) };
-    }
+    const stream = new ReadableStream({
+      async start(controller) {
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
 
-    let jsonStr = content;
-    const codeBlockMatch = content.match(/```(?:json)?\\s*([\\s\\S]*?)```/);
-    if (codeBlockMatch) {
-      jsonStr = codeBlockMatch[1];
-    }
-    jsonStr = jsonStr.trim();
+            const chunk = decoder.decode(value, { stream: true });
+            const lines = chunk.split("\n");
 
-    const result = JSON.parse(jsonStr);
+            for (const line of lines) {
+              if (line.startsWith("data: ")) {
+                const data = line.slice(6);
+                if (data === "[DONE]") {
+                  // 流结束，解析完整内容并返回 JSON
+                  let jsonStr = fullContent;
+                  const codeBlockMatch = fullContent.match(/```(?:json)?\s*([\s\S]*?)```/);
+                  if (codeBlockMatch) {
+                    jsonStr = codeBlockMatch[1];
+                  }
+                  jsonStr = jsonStr.trim();
 
-    return { statusCode: 200, headers, body: JSON.stringify(result) };
+                  try {
+                    const result = JSON.parse(jsonStr);
+                    controller.enqueue(
+                      new TextEncoder().encode(`data: ${JSON.stringify(result)}\n\n`)
+                    );
+                  } catch (e) {
+                    console.error("JSON parse error:", e);
+                    controller.enqueue(
+                      new TextEncoder().encode(`data: ${JSON.stringify({ error: "AI返回格式异常，请重试" })}\n\n`)
+                    );
+                  }
+                  controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"));
+                  controller.close();
+                  return;
+                }
+
+                try {
+                  const parsed = JSON.parse(data);
+                  const delta = parsed.choices?.[0]?.delta?.content;
+                  if (delta) fullContent += delta;
+                } catch {
+                  // 忽略解析失败的行
+                }
+              }
+            }
+          }
+          // 流意外结束但没收到 [DONE]
+          controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"));
+          controller.close();
+        } catch (err) {
+          console.error("Stream error:", err);
+          controller.enqueue(
+            new TextEncoder().encode(`data: ${JSON.stringify({ error: "流式传输中断" })}\n\n`)
+          );
+          controller.close();
+        }
+      },
+    });
+
+    return {
+      statusCode: 200,
+      headers: {
+        ...headers,
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+      },
+      body: stream,
+      isBase64Encoded: false,
+    };
   } catch (error) {
     console.error("Review error:", error);
     return { statusCode: 500, headers, body: JSON.stringify({ error: "审查过程中出错" }) };
