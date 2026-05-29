@@ -80,6 +80,9 @@ exports.handler = async (event) => {
       return { statusCode: 500, headers, body: JSON.stringify({ error: "服务未配置API密钥" }) };
     }
 
+    // 截断过长文本，避免 API 超时
+    const truncatedText = text.length > 3000 ? text.slice(0, 3000) + "\n\n[文本过长，已截取前3000字]" : text;
+
     const response = await fetch("https://token-plan-sgp.xiaomimimo.com/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -90,7 +93,7 @@ exports.handler = async (event) => {
         model: "mimo-v2.5",
         messages: [
           { role: "system", content: REVIEW_SYSTEM_PROMPT },
-          { role: "user", content: buildReviewPrompt(text) },
+          { role: "user", content: buildReviewPrompt(truncatedText) },
         ],
         temperature: 0.1,
       }),
