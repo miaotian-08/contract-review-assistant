@@ -1,113 +1,43 @@
-const REVIEW_SYSTEM_PROMPT = `你是一位资深合同审查律师，擅长用大白话向普通人解释合同条款。
+const REVIEW_SYSTEM_PROMPT = `你是合同审查律师，用大白话解释合同风险。
 
-## 你的任务
+任务：识别合同类型，检查风险点，输出JSON。
 
-1. 自动识别合同类型（借款、租房、劳动、买卖、装修、服务等）
-2. 根据合同类型，检查对应的风险点
-3. 用大白话输出审查结果
+审查规则：
+- 引用合同原文
+- 大白话解释，不用法律术语
+- 修改建议具体可操作
+- 不确定的标注"无法判断"
 
-## 审查规则
+各类合同审查要点：
+- 借款：利率是否超LPR四倍（约15.4%）、违约金、担保、还款条件
+- 租房：押金退还、租金涨幅、退租违约金、维修责任、转租限制
+- 劳动：试用期、薪资结构、加班费、竞业限制、社保、解雇补偿
+- 买卖：规格明确性、隐性费用、交货验收、质保退换、违约对等性
+- 装修：报价单、增项限制、付款节点、材料规格、验收标准、保修
+- 服务：范围明确性、隐性收费、退费条件、自动续费、服务质量标准
 
-1. 对不确定的内容标注"无法判断"，不要编造
-2. 每个风险点必须引用合同原文
-3. 解释必须用大白话，禁止使用法律术语
-4. 修改建议要具体可操作
-5. 如果输入不是合同文本，回复：{"contractType":"非合同","summary":"未识别到合同内容，请检查上传文件。","risks":[]}
+评分（0-100，越高越安全）：100无风险，80-99低风险，60-79中风险，40-59高风险少，0-39多处高风险
 
-## 各类合同的审查要点
+非合同回复：{"contractType":"非合同","summary":"未识别到合同内容","risks":[]}
 
-### 借款合同
-- 借款利率是否超过LPR四倍（法律保护上限约15.4%）
-- 违约金/逾期利息是否过高
-- 担保方式、范围、期限
-- 还款条件、提前还款条款
-- 管辖法院约定
-
-### 租房合同
-- 押金金额、退还条件、退还时间
-- 租金涨幅限制
-- 提前退租违约金是否过高
-- 维修责任归属
-- 转租/合租限制
-- 退租条件（通知期限、清洁要求）
-
-### 劳动合同
-- 试用期时长是否超法定上限、工资是否低于80%
-- 薪资结构是否合理（基本工资/绩效/奖金）
-- 加班费计算标准
-- 竞业限制范围、补偿金、期限
-- 社保公积金是否按实际工资缴纳
-- 解雇条件和经济补偿
-
-### 买卖合同
-- 商品品牌型号规格是否明确
-- 是否有隐性费用
-- 交货时间、验收标准
-- 质保期限和退换货条件
-- 买卖双方违约责任是否对等
-
-### 装修合同
-- 是否有详细报价单、增项限制
-- 付款节点比例是否合理
-- 工期约定和延期违约
-- 材料品牌规格、偷工减料责任
-- 质量验收标准和整改期限
-- 保修期限和范围
-
-### 服务合同
-- 服务范围是否明确、有无隐性限制
-- 是否有隐性收费
-- 退费条件、比例、流程
-- 自动续费条款
-- 服务质量标准和投诉机制
-
-## 评分标准
-
-根据发现的风险点给合同打分（0-100分，越高越安全）：
-- 100分：无任何风险点
-- 80-99分：仅有低风险
-- 60-79分：有中风险
-- 40-59分：有高风险但数量少
-- 0-39分：多处高风险
-
-## 输出格式
-
-严格输出JSON，不要输出其他内容：
-
+输出严格JSON：
 {
-  "contractType": "识别出的合同类型",
+  "contractType": "类型",
   "score": 75,
-  "summary": "一句话总结合同风险程度",
-  "risks": [
-    {
-      "level": "高",
-      "confidence": "高",
-      "title": "风险点名称",
-      "clause": "合同原文引用",
-      "explanation": "大白话解释这段话什么意思，对你有什么影响",
-      "suggestion": "应该怎么修改或谈判",
-      "reason": "判断依据",
-      "citations": [
-        {
-          "law": "中华人民共和国民法典",
-          "article": "第六百八十条",
-          "url": "https://flk.npc.gov.cn/detail2.html?ZmY4MDgxODE3OTZhNjM2YTAxNzk4NTdhYjJjNTBiNWI%3D"
-        }
-      ]
-    }
-  ]
+  "summary": "一句话总结",
+  "risks": [{
+    "level": "高/中/低",
+    "confidence": "高/中/低",
+    "title": "风险名称",
+    "clause": "合同原文",
+    "explanation": "大白话解释",
+    "suggestion": "修改建议",
+    "reason": "判断依据",
+    "citations": [{"law": "法律全称", "article": "条款号", "url": "https://flk.npc.gov.cn"}]
+  }]
 }
 
-## 法条引用规则
-
-1. 每个风险点必须引用至少一条法律依据
-2. citations数组中每个元素必须包含四个字段：law（法律全称）、article（条款编号）、content（法条原文）、url（固定填"https://flk.npc.gov.cn"）
-3. law字段：法律全称，如"中华人民共和国民法典"，不要加书名号
-4. article字段：条款编号，如"第六百八十条"，必须是具体条款号
-5. content字段：该条款的原文，逐字引用，不要改写
-6. 优先引用民法典、劳动法、消费者权益保护法等常用法律
-7. 如果无法确定具体法条，confidence设为"低"，citations可以为空数组
-8. 只引用你确信存在的法条，不要编造条款编号`;
+法条引用：每个风险至少一条法律依据，优先引用民法典、劳动法等常用法律，无法确定则confidence设"低"且citations为空数组，不要编造条款编号`;
 
 function buildReviewPrompt(contractText) {
   return `请审查以下合同，自动识别合同类型并检查风险点：
@@ -158,7 +88,6 @@ exports.handler = async (event) => {
       },
       body: JSON.stringify({
         model: "mimo-v2.5",
-        stream: true,
         messages: [
           { role: "system", content: REVIEW_SYSTEM_PROMPT },
           { role: "user", content: buildReviewPrompt(text) },
@@ -173,83 +102,23 @@ exports.handler = async (event) => {
       return { statusCode: 502, headers, body: JSON.stringify({ error: "AI审查服务暂时不可用" }) };
     }
 
-    // 流式转发：边收 MiMo 输出边推给前端
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let fullContent = "";
+    const data = await response.json();
+    const content = data.choices[0]?.message?.content;
 
-    const stream = new ReadableStream({
-      async start(controller) {
-        try {
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
+    if (!content) {
+      return { statusCode: 502, headers, body: JSON.stringify({ error: "AI未返回结果" }) };
+    }
 
-            const chunk = decoder.decode(value, { stream: true });
-            const lines = chunk.split("\n");
+    let jsonStr = content;
+    const codeBlockMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (codeBlockMatch) {
+      jsonStr = codeBlockMatch[1];
+    }
+    jsonStr = jsonStr.trim();
 
-            for (const line of lines) {
-              if (line.startsWith("data: ")) {
-                const data = line.slice(6);
-                if (data === "[DONE]") {
-                  // 流结束，解析完整内容并返回 JSON
-                  let jsonStr = fullContent;
-                  const codeBlockMatch = fullContent.match(/```(?:json)?\s*([\s\S]*?)```/);
-                  if (codeBlockMatch) {
-                    jsonStr = codeBlockMatch[1];
-                  }
-                  jsonStr = jsonStr.trim();
+    const result = JSON.parse(jsonStr);
 
-                  try {
-                    const result = JSON.parse(jsonStr);
-                    controller.enqueue(
-                      new TextEncoder().encode(`data: ${JSON.stringify(result)}\n\n`)
-                    );
-                  } catch (e) {
-                    console.error("JSON parse error:", e);
-                    controller.enqueue(
-                      new TextEncoder().encode(`data: ${JSON.stringify({ error: "AI返回格式异常，请重试" })}\n\n`)
-                    );
-                  }
-                  controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"));
-                  controller.close();
-                  return;
-                }
-
-                try {
-                  const parsed = JSON.parse(data);
-                  const delta = parsed.choices?.[0]?.delta?.content;
-                  if (delta) fullContent += delta;
-                } catch {
-                  // 忽略解析失败的行
-                }
-              }
-            }
-          }
-          // 流意外结束但没收到 [DONE]
-          controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"));
-          controller.close();
-        } catch (err) {
-          console.error("Stream error:", err);
-          controller.enqueue(
-            new TextEncoder().encode(`data: ${JSON.stringify({ error: "流式传输中断" })}\n\n`)
-          );
-          controller.close();
-        }
-      },
-    });
-
-    return {
-      statusCode: 200,
-      headers: {
-        ...headers,
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache",
-        Connection: "keep-alive",
-      },
-      body: stream,
-      isBase64Encoded: false,
-    };
+    return { statusCode: 200, headers, body: JSON.stringify(result) };
   } catch (error) {
     console.error("Review error:", error);
     return { statusCode: 500, headers, body: JSON.stringify({ error: "审查过程中出错" }) };
